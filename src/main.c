@@ -15,6 +15,7 @@ LOG_MODULE_REGISTER(golioth_temperature, LOG_LEVEL_DBG);
 #include <zephyr/drivers/sensor.h>
 #include <stdlib.h>
 
+#define JSON_FMT "{\"hum\":\"%.6f\",\"pre\":\"%.6f\",\"tem\":\"%.6f\"}"
 static struct golioth_client *client;
 static K_SEM_DEFINE(connected, 0, 1);
 
@@ -44,8 +45,8 @@ static void async_handler(struct golioth_client *client,
 int main(void)
 {
 	int err;
-	struct sensor_value tem;
-	char sbuf[32];
+	struct sensor_value hum, pre, tem;
+	char sbuf[64];
 
 	if (IS_ENABLED(CONFIG_GOLIOTH_SAMPLE_COMMON)) {
 		net_connect();
@@ -73,13 +74,21 @@ int main(void)
 
 	while (true) {
 		sensor_sample_fetch(weather_dev);
+		sensor_channel_get(weather_dev, SENSOR_CHAN_HUMIDITY, &hum);
+		sensor_channel_get(weather_dev, SENSOR_CHAN_PRESS, &pre);
 		sensor_channel_get(weather_dev, SENSOR_CHAN_AMBIENT_TEMP, &tem);
 
-		snprintk(sbuf, sizeof(sbuf), "%d.%06d", tem.val1, abs(tem.val2));
+		snprintk(sbuf,
+		         sizeof(sbuf),
+			 JSON_FMT,
+			 sensor_value_to_double(&hum),
+			 sensor_value_to_double(&pre),
+			 sensor_value_to_double(&tem)
+			);
 		LOG_DBG("Sending temperature %s", sbuf);
 
 		err = golioth_stream_set_async(client,
-					      "temp",
+					      "env",
 					      GOLIOTH_CONTENT_TYPE_JSON,
 					      sbuf,
 					      strlen(sbuf),

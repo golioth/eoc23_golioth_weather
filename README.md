@@ -74,8 +74,8 @@ Build and flash the project:
 west build -b sparkfun_thing_plus_nrf9160_ns .
 west flash
 
-# NXP i.MX RT1060 EVKB (uses west-zephyr.yml)
-west build -b mimxrt1060_evkb .
+# NXP i.MX RT1024 EVK (uses west-zephyr.yml)
+west build -b mimxrt1024_evk .
 west flash
 
 # ESP32 (uses west-zephyr.yml)
@@ -97,4 +97,3 @@ uart:~$ settings set golioth/psk-id <my-psk-id@my-project>
 uart:~$ settings set golioth/psk <my-psk>
 uart:~$ kernel reboot cold
 ```
-

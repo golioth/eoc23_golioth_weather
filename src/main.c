@@ -8,6 +8,7 @@
 LOG_MODULE_REGISTER(golioth_temperature, LOG_LEVEL_DBG);
 
 #include <golioth/client.h>
+#include <golioth/settings.h>
 #include <golioth/stream.h>
 #include <samples/common/net_connect.h>
 #include <samples/common/sample_credentials.h>
@@ -16,8 +17,26 @@ LOG_MODULE_REGISTER(golioth_temperature, LOG_LEVEL_DBG);
 #include <stdlib.h>
 
 #define JSON_FMT "{\"hum\":\"%.6f\",\"pre\":\"%.6f\",\"tem\":\"%.6f\"}"
+#define LOOP_DELAY_S_MAX 60
+#define LOOP_DELAY_S_MIN 0
+static int32_t _loop_delay_s = 5;
+
 static struct golioth_client *client;
 static K_SEM_DEFINE(connected, 0, 1);
+static k_tid_t _system_thread = 0;
+
+void wake_system_thread(void)
+{
+	k_wakeup(_system_thread);
+}
+
+static enum golioth_settings_status on_loop_delay_setting(int32_t new_value, void *arg)
+{
+	_loop_delay_s = new_value;
+	LOG_INF("Set loop delay to %i seconds", new_value);
+	wake_system_thread();
+	return GOLIOTH_SETTINGS_SUCCESS;
+}
 
 static void on_client_event(struct golioth_client *client,
 			    enum golioth_client_event event,
@@ -48,6 +67,8 @@ int main(void)
 	struct sensor_value hum, pre, tem;
 	char sbuf[64];
 
+	_system_thread = k_current_get();
+
 	if (IS_ENABLED(CONFIG_GOLIOTH_SAMPLE_COMMON)) {
 		net_connect();
 	}
@@ -57,6 +78,18 @@ int main(void)
 	golioth_client_register_event_callback(client, on_client_event, NULL);
 
 	k_sem_take(&connected, K_FOREVER);
+
+	struct golioth_settings *settings = golioth_settings_init(client);
+	err = golioth_settings_register_int_with_range(settings,
+						       "LOOP_DELAY_S",
+						       LOOP_DELAY_S_MIN,
+						       LOOP_DELAY_S_MAX,
+						       on_loop_delay_setting,
+						       NULL);
+
+	if (err) {
+		LOG_ERR("Failed to register settings callback: %d", err);
+	}
 
 	const struct device *weather_dev = DEVICE_DT_GET(DT_ALIAS(weather));
 
@@ -99,6 +132,6 @@ int main(void)
 			LOG_WRN("Failed to stream temperature: %d", err);
 		}
 
-		k_sleep(K_SECONDS(5));
+		k_sleep(K_SECONDS(_loop_delay_s));
 	}
 }

@@ -1,12 +1,13 @@
 manifest:
-  version: 0.7
+  version: 0.8
 
   projects:
     - name: golioth
-      path: modules/lib/golioth
-      revision: v0.6.0
-      url: https://github.com/golioth/golioth-zephyr-sdk
+      path: modules/lib/golioth-firmware-sdk
+      revision: v0.11.0
+      url: https://github.com/golioth/golioth-firmware-sdk.git
       west-commands: scripts/west-commands.yml
+      submodules: true
       import:
         file: west-ncs.yml
         path-prefix: deps
@@ -20,11 +21,12 @@ manifest:
           - mcuboot
           - net-tools
           - nrfxlib
-          - tfm-mcuboot
-          - trusted-firmware-m
           - qcbor
           - segger
+          - tfm-mcuboot
           - tinycrypt
+          - trusted-firmware-m
+          - zcbor
 
   self:
     path: app

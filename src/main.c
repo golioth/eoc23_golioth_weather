@@ -7,42 +7,53 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(golioth_temperature, LOG_LEVEL_DBG);
 
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
+#include <golioth/stream.h>
 #include <samples/common/net_connect.h>
-#include <zephyr/net/coap.h>
+#include <samples/common/sample_credentials.h>
 
 #include <zephyr/drivers/sensor.h>
 #include <stdlib.h>
 
-static struct golioth_client *client = GOLIOTH_SYSTEM_CLIENT_GET();
+static struct golioth_client *client;
 static K_SEM_DEFINE(connected, 0, 1);
 
-static void golioth_on_connect(struct golioth_client *client)
+static void on_client_event(struct golioth_client *client,
+			    enum golioth_client_event event,
+			    void *arg)
 {
-	k_sem_give(&connected);
-}
+	bool is_connected = (event == GOLIOTH_CLIENT_EVENT_CONNECTED);
 
-static int async_handler(struct golioth_req_rsp *rsp) {
-	if (rsp->err) {
-		LOG_WRN("Failed to push temperature: %d", rsp->err);
-		return rsp->err;
+	if (is_connected) {
+		k_sem_give(&connected);
 	}
-
-	return 0;
+	LOG_INF("Golioth client %s", is_connected ? "connected" : "disconnected");
 }
 
-void main(void)
+static void async_handler(struct golioth_client *client,
+				const struct golioth_response *response,
+				const char *path,
+				void *arg)
+{
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Failed to send temperature to Golioth: %d", response->status);
+		return;
+	}
+}
+
+int main(void)
 {
 	int err;
 	struct sensor_value tem;
 	char sbuf[32];
 
-	if (IS_ENABLED(CONFIG_GOLIOTH_SAMPLES_COMMON)) {
+	if (IS_ENABLED(CONFIG_GOLIOTH_SAMPLE_COMMON)) {
 		net_connect();
 	}
 
-	client->on_connect = golioth_on_connect;
-	golioth_system_client_start();
+	const struct golioth_client_config *client_config = golioth_sample_credentials_get();
+	client = golioth_client_create(client_config);
+	golioth_client_register_event_callback(client, on_client_event, NULL);
 
 	k_sem_take(&connected, K_FOREVER);
 
@@ -67,14 +78,16 @@ void main(void)
 		snprintk(sbuf, sizeof(sbuf), "%d.%06d", tem.val1, abs(tem.val2));
 		LOG_DBG("Sending temperature %s", sbuf);
 
-		err = golioth_stream_push_cb(client, "temp",
-					     GOLIOTH_CONTENT_FORMAT_APP_JSON,
-					     sbuf, strlen(sbuf),
-					     async_handler, NULL);
+		err = golioth_stream_set_async(client,
+					      "temp",
+					      GOLIOTH_CONTENT_TYPE_JSON,
+					      sbuf,
+					      strlen(sbuf),
+					      async_handler,
+					      NULL);
 
 		if (err) {
-			LOG_WRN("Failed to push temperature: %d", err);
-			return;
+			LOG_WRN("Failed to stream temperature: %d", err);
 		}
 
 		k_sleep(K_SECONDS(5));
